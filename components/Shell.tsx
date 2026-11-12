@@ -121,7 +121,7 @@ function Engine() {
   const host = useRef<HTMLDivElement>(null);
   const snack = useSnack();
   useEffect(() => { P.setSnack((m) => snack({ msg: m })); if (host.current) P.mountEngine(host.current); }, []); // eslint-disable-line react-hooks/exhaustive-deps
-  return <div id="yt-host" ref={host} className="yt-host" />;
+  return <><div id="yt-host" ref={host} className="yt-host" /><div className="yt-cover" aria-hidden /></>;
 }
 
 function Keys() {

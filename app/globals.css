@@ -271,7 +271,9 @@ body { background: var(--md-surface); }
 .lyr-src { font-size: 12px; color: var(--md-on-surface-variant); margin-top: 24px; }
 
 /* yt host (hidden player / video mode) */
-.yt-host { position: fixed; left: 0; top: 0; width: 200px; height: 200px; opacity: .001; z-index: -1; pointer-events: none; overflow: hidden; background: #000; }
+.yt-host { position: fixed; left: 0; top: 0; width: 200px; height: 200px; opacity: 1; z-index: -1; pointer-events: none; overflow: hidden; background: #000; }
 
 /* AI */
 .ai-hero { padding: 16px 0 8px; }
+
+.yt-cover { position: fixed; left: 0; top: 0; width: 200px; height: 200px; z-index: -1; background: var(--md-surface); pointer-events: none; }

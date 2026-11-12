@@ -195,7 +195,7 @@ export function NowPlaying() {
       if (expanded && videoMode && el) {
         const r = el.getBoundingClientRect();
         Object.assign(host.style, { left: r.left + 'px', top: r.top + 'px', width: r.width + 'px', height: r.height + 'px', opacity: '1', zIndex: '62', pointerEvents: 'none', borderRadius: '28px' });
-      } else Object.assign(host.style, { left: '0px', top: '0px', width: '200px', height: '200px', opacity: '0.001', zIndex: '-1', pointerEvents: 'none' });
+      } else Object.assign(host.style, { left: '0px', top: '0px', width: '200px', height: '200px', opacity: '1', zIndex: '-1', pointerEvents: 'none' });
       raf = requestAnimationFrame(place);
     };
     place();

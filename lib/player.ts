@@ -75,26 +75,38 @@ let watchdog: any;
 let snackFn: (m: string) => void = () => {};
 export function setSnack(fn: (m: string) => void) { snackFn = fn; }
 
-export function mountEngine(host: HTMLElement) {
-  restore();
-  if (yt) return;
-  const f = document.createElement('iframe');
+const HOSTS = ['https://www.youtube-nocookie.com', 'https://www.youtube.com'];
+let hostIdx = 0;
+let hostEl: HTMLElement | null = null;
+let readyTimer: any;
+function rebuild(reason: string) {
+  if (hostIdx >= HOSTS.length - 1) { snackFn(`YouTube プレーヤーを起動できません（${reason}）`); emit({ error: reason, playing: false, buffering: false }); return; }
+  hostIdx++;
+  try { yt?.destroy?.(); } catch {}
+  yt = null; ready = false;
+  if (hostEl) { hostEl.innerHTML = ''; createPlayer(hostEl); }
+  const c = current(); if (c) pendingAutoplay = true;
+}
+function createPlayer(host: HTMLElement) {
+  const div = document.createElement('div');
+  host.appendChild(div);
   const cur = current();
-  const q = new URLSearchParams({ enablejsapi: '1', autoplay: '0', controls: '0', rel: '0', playsinline: '1', iv_load_policy: '3', disablekb: '1', fs: '0', modestbranding: '1', origin: location.origin, hl: 'ja' });
-  f.src = `https://www.youtube-nocookie.com/embed/${cur?.id || ''}?${q}`;
-  f.allow = 'autoplay; encrypted-media; picture-in-picture';
-  f.referrerPolicy = 'strict-origin-when-cross-origin';
-  f.title = 'player';
-  f.style.cssText = 'width:100%;height:100%;border:0;display:block';
-  host.appendChild(f);
-  loadedId = cur?.id || null;
   loadApi().then((YT) => {
-    yt = new YT.Player(f, {
+    clearTimeout(readyTimer);
+    readyTimer = setTimeout(() => { if (!ready) rebuild('timeout'); }, 10000);
+    yt = new YT.Player(div, {
+      host: HOSTS[hostIdx],
+      width: '100%', height: '100%',
+      videoId: cur?.id,
+      playerVars: { autoplay: 0, controls: 0, rel: 0, playsinline: 1, iv_load_policy: 3, disablekb: 1, fs: 0, origin: location.origin, hl: 'ja', enablejsapi: 1 },
       events: {
         onReady: () => {
           ready = true;
+          clearTimeout(readyTimer);
+          try { const f = yt.getIframe(); f.allow = 'autoplay; encrypted-media; picture-in-picture'; f.style.cssText = 'width:100%;height:100%;border:0;display:block'; } catch {}
+          loadedId = cur?.id || null;
           yt.setVolume(s.volume);
-          if (s.muted) yt.mute();
+          if (s.muted) yt.mute(); else yt.unMute();
           if (cur && s.time > 3) yt.cueVideoById({ videoId: cur.id, startSeconds: Math.floor(s.time) });
           if (pendingAutoplay) { const c = current(); if (c) load(c, true); }
         },
@@ -108,8 +120,10 @@ export function mountEngine(host: HTMLElement) {
         },
         onError: (e: any) => {
           const c = Number(e.data);
+          // player/config errors -> try other host first
+          if ((c === 5 || c === 152 || c === 153 || c === 2) && hostIdx < HOSTS.length - 1) { rebuild(`エラー ${c}`); return; }
           errStreak++;
-          if (errStreak >= 3) { snackFn(`再生できません（エラー ${c}）。この端末やネットワークで YouTube の埋め込み再生が制限されている可能性があります`); emit({ error: String(c), playing: false }); return; }
+          if (errStreak >= 3) { snackFn(`再生できません（エラー ${c}）`); emit({ error: String(c), playing: false }); return; }
           const msg = c === 101 || c === 150 ? 'この曲は外部再生が許可されていないため、スキップしました' : c === 100 ? '曲が見つからないため、スキップしました' : `再生エラー (${c})。スキップしました`;
           snackFn(msg);
           emit({ error: msg });
@@ -117,6 +131,15 @@ export function mountEngine(host: HTMLElement) {
         },
       },
     });
+  });
+}
+
+export function mountEngine(host: HTMLElement) {
+  restore();
+  if (yt || hostEl) return;
+  hostEl = host;
+  createPlayer(host);
+  {
     clearInterval(tick);
     tick = setInterval(() => {
       if (!ready || !yt?.getCurrentTime) return;
@@ -126,7 +149,7 @@ export function mountEngine(host: HTMLElement) {
       if (s.sleepAt && Date.now() >= s.sleepAt) { yt.pauseVideo(); emit({ sleepAt: null }); snackFn('スリープタイマーで停止しました'); }
       if ('mediaSession' in navigator && d) { try { navigator.mediaSession.setPositionState({ duration: d, position: Math.min(t, d), playbackRate: 1 }); } catch {} }
     }, 250);
-  });
+  }
 }
 
 function load(item: Item, autoplay = true) {
@@ -143,7 +166,7 @@ function load(item: Item, autoplay = true) {
       if (s.playing || current()?.id !== item.id) return;
       const st = yt.getPlayerState?.();
       if (st === 5 || st === -1 || st === 2) { try { yt.playVideo(); } catch {} }
-      setTimeout(() => { if (!s.playing && current()?.id === item.id) snackFn('再生が始まりません。もう一度 ▶ を押してください（ブラウザの自動再生制限の可能性）'); }, 2500);
+      setTimeout(() => { if (!s.playing && current()?.id === item.id) { if (hostIdx < HOSTS.length - 1) rebuild('stall'); else snackFn('再生が始まりません。▶ を押してください'); } }, 3000);
     }, 6000);
   } else yt.cueVideoById({ videoId: item.id });
   maybeExtend();
