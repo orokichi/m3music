@@ -62,12 +62,16 @@ function loadApi() {
     window.onYouTubeIframeAPIReady = () => { prev?.(); res(window.YT); };
     const sc = document.createElement('script');
     sc.src = 'https://www.youtube.com/iframe_api';
+    sc.onerror = () => { snackFn('YouTube に接続できません（ネットワークや拡張機能でブロックされている可能性があります）'); emit({ error: 'api-blocked' }); };
     document.head.appendChild(sc);
+    setTimeout(() => { if (!window.YT?.Player) { snackFn('YouTube のプレーヤーを読み込めません（ネットワーク制限・広告ブロッカーを確認してください）'); emit({ error: 'api-timeout' }); } }, 12000);
   });
   return apiP;
 }
 
 let tick: any;
+let errStreak = 0;
+let watchdog: any;
 let snackFn: (m: string) => void = () => {};
 export function setSnack(fn: (m: string) => void) { snackFn = fn; }
 
@@ -96,7 +100,7 @@ export function mountEngine(host: HTMLElement) {
         },
         onStateChange: (e: any) => {
           const st = e.data;
-          if (st === 1) { emit({ playing: true, buffering: false, error: null }); }
+          if (st === 1) { errStreak = 0; clearTimeout(watchdog); emit({ playing: true, buffering: false, error: null }); }
           else if (st === 2) emit({ playing: false, buffering: false });
           else if (st === 3) emit({ buffering: true });
           else if (st === 0) onEnded();
@@ -104,6 +108,8 @@ export function mountEngine(host: HTMLElement) {
         },
         onError: (e: any) => {
           const c = Number(e.data);
+          errStreak++;
+          if (errStreak >= 3) { snackFn(`再生できません（エラー ${c}）。この端末やネットワークで YouTube の埋め込み再生が制限されている可能性があります`); emit({ error: String(c), playing: false }); return; }
           const msg = c === 101 || c === 150 ? 'この曲は外部再生が許可されていないため、スキップしました' : c === 100 ? '曲が見つからないため、スキップしました' : `再生エラー (${c})。スキップしました`;
           snackFn(msg);
           emit({ error: msg });
@@ -130,8 +136,16 @@ function load(item: Item, autoplay = true) {
   if (!ready) { pendingAutoplay = autoplay; return; }
   pendingAutoplay = false;
   loadedId = item.id;
-  if (autoplay) yt.loadVideoById({ videoId: item.id });
-  else yt.cueVideoById({ videoId: item.id });
+  if (autoplay) {
+    yt.loadVideoById({ videoId: item.id });
+    clearTimeout(watchdog);
+    watchdog = setTimeout(() => {
+      if (s.playing || current()?.id !== item.id) return;
+      const st = yt.getPlayerState?.();
+      if (st === 5 || st === -1 || st === 2) { try { yt.playVideo(); } catch {} }
+      setTimeout(() => { if (!s.playing && current()?.id === item.id) snackFn('再生が始まりません。もう一度 ▶ を押してください（ブラウザの自動再生制限の可能性）'); }, 2500);
+    }, 6000);
+  } else yt.cueVideoById({ videoId: item.id });
   maybeExtend();
 }
 
